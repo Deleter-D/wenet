@@ -22,6 +22,7 @@ from wenet.MFFDED.encoder import LayerFusionEncoder
 from wenet.DIMNet.model import DIMNet
 from wenet.DIMNet.encoder import SharedEncoder
 from wenet.DIMNet.LASAS import LASASARModel
+from wenet.DIMNet.cross_info_fusion import CrossInformationFusionModule
 from wenet.k2.model import K2Model
 from wenet.paraformer.cif import Cif
 from wenet.paraformer.layers import SanmDecoder, SanmEncoder
@@ -212,9 +213,12 @@ def init_speech_model(args, configs):
             **configs["att_encoder_conf"]["efficient_conf"]
             if "efficient_conf" in configs["att_encoder_conf"] else {}
         )
+        cross_fusion = CrossInformationFusionModule(
+            encoder.output_size(), configs["lasas_conf"]["hidden_dim"]
+        )
         decoder = WENET_DECODER_CLASSES[decoder_type](
             vocab_size,
-            encoder.output_size() + configs["lasas_conf"]["hidden_dim"],
+            configs["lasas_conf"]["hidden_dim"],
             **configs["decoder_conf"],
         )
         model = WENET_MODEL_CLASSES[model_type](
@@ -222,6 +226,7 @@ def init_speech_model(args, configs):
             shared_encoder=encoder,
             ctc_encoder=ctc_encoder,
             att_encoder=att_encoder,
+            cross_fusion=cross_fusion,
             att_decoder=decoder,
             ctc=ctc,
             lasas_ar=lasas_ar,

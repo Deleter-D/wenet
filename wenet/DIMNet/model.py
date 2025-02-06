@@ -9,6 +9,7 @@ from wenet.transformer.encoder import ConformerEncoder
 from wenet.transformer.decoder import TransformerDecoder
 from wenet.DIMNet.encoder import SharedEncoder
 from wenet.DIMNet.LASAS import LASASARModel
+from wenet.DIMNet.cross_info_fusion import CrossInformationFusionModule
 from wenet.utils.common import IGNORE_ID
 from wenet.transformer.search import (
     ctc_greedy_search,
@@ -49,6 +50,7 @@ class DIMNet(ASRModel):
         att_decoder: TransformerDecoder,
         ctc: CTC,
         lasas_ar: LASASARModel,
+        cross_fusion: CrossInformationFusionModule,
         ctc_weight: float = 0.3,
         lasas_weight: float = 0.4,
         ignore_id: int = IGNORE_ID,
@@ -77,6 +79,7 @@ class DIMNet(ASRModel):
         self.att_decoder = att_decoder
         self.lasas_ar = lasas_ar
         self.lasas_weight = lasas_weight
+        self.cross_fusion = cross_fusion
 
     def forward(
         self,
@@ -136,20 +139,16 @@ class DIMNet(ASRModel):
         else:
             bimodal_feats, loss_lasas = None, None
 
-        # 4a. Attention Encoder
-        bimodal_feats_detached = bimodal_feats.detach()
-        att_encoder_in = torch.concat([encoder_out, bimodal_feats_detached], dim=-1)
-        att_encoder_out, att_encoder_mask = self.att_encoder(
-            att_encoder_in, encoder_out_lens
+        # 4a. Cross Information Fusion Module
+        bimodal_feats_detached = bimodal_feats.detach()  # accent_feats
+        cross_fusion_out = self.cross_fusion(
+            encoder_out, bimodal_feats_detached, encoder_mask
         )
 
         # 4b. Attention Decoder
         if self.ctc_weight + self.lasas_weight != 1.0:
-            att_decoder_in = torch.concat(
-                (att_encoder_out, bimodal_feats_detached), dim=2
-            )
             loss_att, acc_att = self._calc_att_loss(
-                att_decoder_in,
+                cross_fusion_out,
                 encoder_mask,
                 text,
                 text_lengths,
