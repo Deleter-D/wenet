@@ -619,6 +619,11 @@ def padding(data):
             [sample[i]["subdialect"] for i in order], dtype=torch.int64
         )
         batch['subdialects'] = subdialects
+    if "expression_habit" in sample[0]:
+        expression_habits = torch.tensor(
+            [sample[i]["expression_habit"] for i in order], dtype=torch.int64
+        )
+        batch["expression_habits"] = expression_habits
     return batch
 
 

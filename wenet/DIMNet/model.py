@@ -9,6 +9,7 @@ from wenet.transformer.encoder import ConformerEncoder
 from wenet.transformer.decoder import TransformerDecoder
 from wenet.DIMNet.encoder import SharedEncoder
 from wenet.DIMNet.LASAS import LASASARModel
+from wenet.DIMNet.expression_habits import ExpressionHabitModule
 from wenet.utils.common import IGNORE_ID
 from wenet.transformer.search import (
     ctc_greedy_search,
@@ -49,8 +50,10 @@ class DIMNet(ASRModel):
         att_decoder: TransformerDecoder,
         ctc: CTC,
         lasas_ar: LASASARModel,
-        ctc_weight: float = 0.3,
-        lasas_weight: float = 0.4,
+        expression_habit_modelu: ExpressionHabitModule,
+        ctc_weight: float = 0.2,
+        lasas_weight: float = 0.3,
+        expression_habit_weight: float = 0.3,
         ignore_id: int = IGNORE_ID,
         reverse_weight: float = 0.0,
         lsm_weight: float = 0.0,
@@ -77,6 +80,8 @@ class DIMNet(ASRModel):
         self.att_decoder = att_decoder
         self.lasas_ar = lasas_ar
         self.lasas_weight = lasas_weight
+        self.expression_habit_modelu = expression_habit_modelu
+        self.expression_habit_weight = expression_habit_weight
 
     def forward(
         self,
@@ -89,6 +94,7 @@ class DIMNet(ASRModel):
         text = batch["target"].to(device)
         text_lengths = batch["target_lengths"].to(device)
         subdialect_lables = batch["subdialects"].to(device)
+        expression_habit_labels = batch["expression_habits"].to(device)
 
         assert text_lengths.dim() == 1, text_lengths.shape
         # Check that batch_size is unified
@@ -119,31 +125,46 @@ class DIMNet(ASRModel):
         else:
             loss_ctc, ctc_probs = None, None
 
-        # 3. LASAS AR
+        # 3. Expression Habit Module
+        if self.expression_habit_weight != 0.0:
+            expression_habit_feats, loss_expression_habit = (
+                self.expression_habit_modelu(
+                    encoder_out, encoder_out_lens, expression_habit_labels
+                )
+            )
+        else:
+            expression_habit_feats, loss_expression_habit = None, None
+
+        # 4. LASAS AR
         if self.lasas_weight != 0.0:
             fusion_layer_feats = torch.concat(layer_feats, dim=-1)
+            fusion_layer_feats = torch.concat(
+                [fusion_layer_feats, expression_habit_feats], dim=-1
+            )
             ctc_probs_detached = ctc_probs.detach()
             # 原论文需要GreedySearch并Regular
             greedy_decoded = greedy_search(
                 ctc_probs_detached, ctc_encoder_out_lens, blank_id=0
             )
-            greedy_decoded = F.one_hot(
-                greedy_decoded, num_classes=ctc_probs_detached.shape[-1]
-            ).float().to(device)
+            greedy_decoded = (
+                F.one_hot(greedy_decoded, num_classes=ctc_probs_detached.shape[-1])
+                .float()
+                .to(device)
+            )
             bimodal_feats, loss_lasas = self.lasas_ar(
                 fusion_layer_feats, greedy_decoded, subdialect_lables
             )
         else:
             bimodal_feats, loss_lasas = None, None
 
-        # 4a. Attention Encoder
+        # 5a. Attention Encoder
         bimodal_feats_detached = bimodal_feats.detach()
         att_encoder_in = torch.concat([encoder_out, bimodal_feats_detached], dim=-1)
         att_encoder_out, att_encoder_mask = self.att_encoder(
             att_encoder_in, encoder_out_lens
         )
 
-        # 4b. Attention Decoder
+        # 5b. Attention Decoder
         if self.ctc_weight + self.lasas_weight != 1.0:
             att_decoder_in = torch.concat(
                 (att_encoder_out, bimodal_feats_detached), dim=2
@@ -156,28 +177,24 @@ class DIMNet(ASRModel):
                 {"langs": batch["langs"], "tasks": batch["tasks"]},
             )
 
-        if loss_ctc is None:
-            if loss_lasas is None:
-                loss = loss_att
-            else:
-                loss = (
-                    self.lasas_weight * loss_lasas
-                    + (1.0 - self.lasas_weight) * loss_att
+            loss = (
+                self.ctc_weight * loss_ctc
+                + self.lasas_weight * loss_lasas
+                + self.expression_habit_weight * loss_expression_habit
+                + (
+                    1.0
+                    - self.ctc_weight
+                    - self.lasas_weight
+                    - self.expression_habit_weight
                 )
-        else:
-            if loss_lasas is None:
-                loss = self.ctc_weight * loss_ctc + (1.0 - self.ctc_weight) * loss_att
-            else:
-                loss = (
-                    self.ctc_weight * loss_ctc
-                    + self.lasas_weight * loss_lasas
-                    + (1.0 - self.ctc_weight - self.lasas_weight) * loss_att
-                )
+                * loss_att
+            )
         return {
             "loss": loss,
             "loss_att": loss_att,
             "loss_ctc": loss_ctc,
             "loss_lasas": loss_lasas,
+            "loss_expression_habit": loss_expression_habit,
             "th_accuracy": acc_att,
         }
 

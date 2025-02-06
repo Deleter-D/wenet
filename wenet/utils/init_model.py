@@ -22,6 +22,7 @@ from wenet.MFFDED.encoder import LayerFusionEncoder
 from wenet.DIMNet.model import DIMNet
 from wenet.DIMNet.encoder import SharedEncoder
 from wenet.DIMNet.LASAS import LASASARModel
+from wenet.DIMNet.expression_habits import ExpressionHabitModule
 from wenet.k2.model import K2Model
 from wenet.paraformer.cif import Cif
 from wenet.paraformer.layers import SanmDecoder, SanmEncoder
@@ -200,11 +201,16 @@ def init_speech_model(args, configs):
             **configs['ctc_encoder_conf']['efficient_conf']
             if 'efficient_conf' in configs['ctc_encoder_conf'] else {})
         lasas_ar = LASASARModel(
-            acoustic_dim=configs['encoder_conf']['output_size'] * 3,
+            acoustic_dim=configs['encoder_conf']['output_size'] * 4,
             text_dim=vocab_size,
             hidden_dim=configs['lasas_conf']['hidden_dim'],
             num_heads=configs['lasas_conf']['num_heads'],
             num_classes=configs['lasas_conf']['num_classes'])
+        expression_habit_module = ExpressionHabitModule(
+            configs["encoder_conf"]["output_size"],
+            **configs["expression_habit_conf"],
+            **configs["expression_habit_conf"]["efficient_conf"]
+            if "efficient_conf" in configs["att_encoder_conf"] else {})
         att_encoder_type = configs.get('att_encoder', 'conformer')
         att_encoder = WENET_ENCODER_CLASSES[att_encoder_type](
             configs["encoder_conf"]["output_size"] + configs["lasas_conf"]["hidden_dim"],
@@ -225,6 +231,7 @@ def init_speech_model(args, configs):
             att_decoder=decoder,
             ctc=ctc,
             lasas_ar=lasas_ar,
+            expression_habit_modelu=expression_habit_module,
             special_tokens=configs.get('tokenizer_conf',
                                        {}).get('special_tokens', None),
             **configs['model_conf'])

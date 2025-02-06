@@ -41,6 +41,18 @@ att_encoder_conf:
     input_layer: linear # encoder architecture type
     normalize_before: true
 
+expression_habit_conf:
+    output_size: 256    # dimension of attention
+    attention_heads: 4
+    linear_units: 2048  # the number of units of position-wise feed forward
+    num_blocks: 6      # the number of encoder blocks
+    dropout_rate: 0.1
+    positional_dropout_rate: 0.1
+    attention_dropout_rate: 0.0
+    input_layer: linear # encoder architecture type
+    normalize_before: true
+    num_classes: 30
+
 lasas_conf:
     hidden_dim: 256
     num_heads: 8
@@ -83,8 +95,9 @@ cmvn_conf:
 # hybrid CTC/attention
 model: dimnet
 model_conf:
-    ctc_weight: 0.3
-    lasas_weight: 0.4
+    ctc_weight: 0.2
+    lasas_weight: 0.3
+    expression_habit_weight: 0.3
     lsm_weight: 0.1     # label smoothing option
     length_normalized_loss: false
 
