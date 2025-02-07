@@ -25,19 +25,12 @@ from wenet.utils.context_graph import ContextGraph
 
 def greedy_search(
     ctc_probs: torch.Tensor, ctc_lens: torch.Tensor, blank_id: int = 0
-) -> List[DecodeResult]:
-    batch_size = ctc_probs.shape[0]
-    maxlen = ctc_probs.size(1)
-    topk_prob, topk_index = ctc_probs.topk(1, dim=2)  # (B, maxlen, 1)
-    topk_index = topk_index.view(batch_size, maxlen)  # (B, maxlen)
-    mask = make_pad_mask(ctc_lens, maxlen)  # (B, maxlen)
-    topk_index = topk_index.masked_fill_(mask, blank_id)  # (B, maxlen)
-    hyps = [hyp.tolist() for hyp in topk_index]
-    scores = topk_prob.max(1)
-    results = []
-    for hyp in hyps:
-        results.append(hyp)
-    return torch.tensor(results)
+) -> torch.Tensor:
+    batch_size, maxlen, _ = ctc_probs.shape
+    topk_index = ctc_probs.argmax(dim=2)  # (B, maxlen)
+    mask = make_pad_mask(ctc_lens, maxlen).to(ctc_probs.device)  # (B, maxlen)
+    topk_index.masked_fill_(mask, blank_id)  # (B, maxlen)
+    return topk_index
 
 
 class DIMNet(ASRModel):
