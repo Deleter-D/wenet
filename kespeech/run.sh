@@ -103,15 +103,18 @@ fi
 if [ ${stage} -le 3 ] && [ ${stop_stage} -ge 3 ]; then
     echo "Prepare data, prepare required format"
     for x in ${dev_set} ${test_set} ${train_set}; do
+        cp ${data}/Metadata/spk2age data/${subdialect}/$x/spk2age
+        cp ${data}/Metadata/spk2gender data/${subdialect}/$x/spk2gender
         if [ $data_type == "shard" ]; then
             tools/make_shard_list.py --num_utts_per_shard $num_utts_per_shard \
                 --num_threads 16 data/${subdialect}/$x/wav.scp data/${subdialect}/$x/text \
                 $(realpath data/${subdialect}/$x/shards) data/${subdialect}/$x/data.list
         else
-            # tools/make_raw_list.py data/${subdialect}/$x/wav.scp data/${subdialect}/$x/text \
-            #     data/${subdialect}/$x/data.list
             local/make_raw_list.py data/${subdialect}/$x/wav.scp data/${subdialect}/$x/text \
-                data/${subdialect}/$x/utt2subdialect data/${subdialect}/$x/data.list
+                data/${subdialect}/$x/utt2subdialect \
+                data/${subdialect}/$x/utt2dur data/${subdialect}/$x/utt2spk \
+                data/${subdialect}/$x/spk2age data/${subdialect}/$x/spk2gender \
+                data/${subdialect}/$x/data.list
         fi
     done
 fi
