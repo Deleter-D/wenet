@@ -1,26 +1,20 @@
-from typing import Optional, Tuple, List
+from typing import List, Optional, Tuple
 
 import torch
 import torch.utils.checkpoint as ckpt
 
 from wenet.transformer.convolution import ConvolutionModule
-from wenet.transformer.encoder_layer import (
-    ConformerEncoderLayer,
-    TransformerEncoderLayer,
-)
 from wenet.transformer.encoder import BaseEncoder
-from wenet.utils.class_utils import (
-    WENET_ACTIVATION_CLASSES,
-    WENET_ATTENTION_CLASSES,
-    WENET_MLP_CLASSES,
-)
-from wenet.utils.mask import make_pad_mask
-from wenet.utils.mask import add_optional_chunk_mask
+from wenet.transformer.encoder_layer import (ConformerEncoderLayer,
+                                             TransformerEncoderLayer)
+from wenet.utils.class_utils import (WENET_ACTIVATION_CLASSES,
+                                     WENET_ATTENTION_CLASSES,
+                                     WENET_MLP_CLASSES)
 from wenet.utils.common import mask_to_bias
+from wenet.utils.mask import add_optional_chunk_mask, make_pad_mask
 
 
 class SharedEncoder(BaseEncoder):
-
     def __init__(
         self,
         input_size: int,
@@ -205,13 +199,10 @@ class SharedEncoder(BaseEncoder):
         pos_emb: torch.Tensor,
         mask_pad: torch.Tensor,
     ) -> Tuple[torch.Tensor, List[torch.Tensor]]:
-        num_layers = len(self.encoders)
-        feats_position = [num_layers // 3, 2 * num_layers // 3, num_layers]
-        layer_feats = []
+        layer_feats = torch.zeros_like(xs)
         for idx, layer in enumerate(self.encoders):
             xs, chunk_masks, _, _ = layer(xs, chunk_masks, pos_emb, mask_pad)
-            if idx + 1 in feats_position:
-                layer_feats.append(xs)
+            layer_feats += xs
         return xs, layer_feats
 
     @torch.jit.unused
@@ -222,13 +213,10 @@ class SharedEncoder(BaseEncoder):
         pos_emb: torch.Tensor,
         mask_pad: torch.Tensor,
     ) -> torch.Tensor:
-        num_layers = len(self.encoders)
-        feats_position = [num_layers // 3, 2 * num_layers // 3, num_layers]
-        layer_feats = []
+        layer_feats = torch.zeros_like(xs)
         for idx, layer in enumerate(self.encoders):
             xs, chunk_masks, _, _ = ckpt.checkpoint(
                 layer.__call__, xs, chunk_masks, pos_emb, mask_pad, use_reentrant=False
             )
-            if idx in feats_position:
-                layer_feats.append(xs)
+            layer_feats += xs
         return xs, layer_feats
