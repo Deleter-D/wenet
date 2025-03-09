@@ -64,7 +64,7 @@ prefetch=10
 # use average_checkpoint will get better result
 average_checkpoint=true
 decode_checkpoint=$dir/final.pt
-average_num=30
+average_num=10
 decode_modes="ctc_greedy_search ctc_prefix_beam_search attention attention_rescoring"
 
 train_engine=torch_ddp
@@ -108,9 +108,7 @@ if [ ${stage} -le 3 ] && [ ${stop_stage} -ge 3 ]; then
                 --num_threads 16 data/${subdialect}/$x/wav.scp data/${subdialect}/$x/text \
                 $(realpath data/${subdialect}/$x/shards) data/${subdialect}/$x/data.list
         else
-            # tools/make_raw_list.py data/${subdialect}/$x/wav.scp data/${subdialect}/$x/text \
-            #     data/${subdialect}/$x/data.list
-            local/make_raw_list.py data/${subdialect}/$x/wav.scp data/${subdialect}/$x/text \
+            lcal/make_raw_list.py data/${subdialect}/$x/wav.scp data/${subdialect}/$x/text \
                 data/${subdialect}/$x/utt2subdialect data/${subdialect}/$x/data.list
         fi
     done

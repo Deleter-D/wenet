@@ -107,7 +107,6 @@ class DIMNet(ASRModel):
 
         # 3. LASAS AR
         if self.lasas_weight != 0.0:
-            fusion_layer_feats = torch.concat(layer_feats, dim=-1)
             ctc_probs_detached = ctc_probs.detach()
             # 原论文需要GreedySearch并Regular
             greedy_decoded = self.greedy_search(
@@ -117,7 +116,7 @@ class DIMNet(ASRModel):
                 greedy_decoded, num_classes=ctc_probs_detached.shape[-1]
             ).float()
             bimodal_feats, loss_lasas = self.lasas_ar(
-                fusion_layer_feats, greedy_decoded, subdialect_lables
+                layer_feats, greedy_decoded, subdialect_lables
             )
         else:
             bimodal_feats, loss_lasas = None, None
@@ -127,11 +126,20 @@ class DIMNet(ASRModel):
         cross_fusion_out = self.cross_fusion(
             encoder_out, bimodal_feats_detached, encoder_mask
         )
+        att_encoder_in = torch.concat(
+            [encoder_out, bimodal_feats_detached, cross_fusion_out], dim=-1
+        )
+        att_encoder_out, att_encoder_mask = self.att_encoder(
+            att_encoder_in, encoder_out_lens
+        )
 
         # 4b. Attention Decoder
         if self.ctc_weight + self.lasas_weight != 1.0:
+            att_decoder_in = torch.concat(
+                [att_encoder_out, bimodal_feats_detached], dim=-1
+            )
             loss_att, acc_att = self._calc_att_loss(
-                cross_fusion_out,
+                att_decoder_in,
                 encoder_mask,
                 text,
                 text_lengths,
@@ -244,23 +252,29 @@ class DIMNet(ASRModel):
         ctc_probs = self.ctc_logprobs(ctc_encoder_out, blank_penalty, blank_id)
 
         # 3. LASAS AR
-        fusion_layer_feats = torch.concat(layer_feats, dim=-1)
         greedy_decoded = self.greedy_search(ctc_probs, ctc_encoder_out_lens, blank_id)
         greedy_decoded = F.one_hot(
             greedy_decoded, num_classes=ctc_probs.shape[-1]
         ).float()
-        bimodal_feats = self.lasas_ar.forward_lasas(fusion_layer_feats, ctc_probs)
+        bimodal_feats = self.lasas_ar.forward_lasas(layer_feats, ctc_probs)
 
         # 4a. Cross Information Fusion Module
         cross_fusion_out = self.cross_fusion(encoder_out, bimodal_feats, encoder_mask)
+        att_encoder_in = torch.concat(
+            [encoder_out, bimodal_feats, cross_fusion_out], dim=-1
+        )
+        att_encoder_out, att_encoder_mask = self.att_encoder(
+            att_encoder_in, encoder_out_lens
+        )
 
         # 4b. Attention Decoder
+        att_encoder_out = torch.concat([att_encoder_out, bimodal_feats], dim=-1)
 
         results = {}
         if "attention" in methods:
             results["attention"] = attention_beam_search(
                 self,
-                cross_fusion_out,
+                att_encoder_out,
                 encoder_mask,
                 beam_size,
                 length_penalty,
@@ -286,7 +300,7 @@ class DIMNet(ASRModel):
             results["attention_rescoring"] = attention_rescoring(
                 self,
                 ctc_prefix_result,
-                cross_fusion_out,
+                att_encoder_out,
                 encoder_out_lens,
                 ctc_weight,
                 reverse_weight,

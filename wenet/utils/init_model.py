@@ -201,14 +201,14 @@ def init_speech_model(args, configs):
             **configs['ctc_encoder_conf']['efficient_conf']
             if 'efficient_conf' in configs['ctc_encoder_conf'] else {})
         lasas_ar = LASASARModel(
-            acoustic_dim=configs['encoder_conf']['output_size'] * 3,
+            acoustic_dim=configs['encoder_conf']['output_size'],
             text_dim=vocab_size,
             hidden_dim=configs['lasas_conf']['hidden_dim'],
             num_heads=configs['lasas_conf']['num_heads'],
             num_classes=configs['lasas_conf']['num_classes'])
         att_encoder_type = configs.get('att_encoder', 'conformer')
         att_encoder = WENET_ENCODER_CLASSES[att_encoder_type](
-            configs["encoder_conf"]["output_size"] + configs["lasas_conf"]["hidden_dim"],
+            configs['encoder_conf']['output_size'] + configs["lasas_conf"]["hidden_dim"] * 2,
             **configs["att_encoder_conf"],
             **configs["att_encoder_conf"]["efficient_conf"]
             if "efficient_conf" in configs["att_encoder_conf"] else {}
@@ -218,7 +218,7 @@ def init_speech_model(args, configs):
         )
         decoder = WENET_DECODER_CLASSES[decoder_type](
             vocab_size,
-            configs["lasas_conf"]["hidden_dim"],
+            att_encoder.output_size() + configs["lasas_conf"]["hidden_dim"],
             **configs["decoder_conf"],
         )
         model = WENET_MODEL_CLASSES[model_type](
